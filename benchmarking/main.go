@@ -19,17 +19,19 @@ import (
 var coeffManipulation bool
 var logSearch bool
 
-// code for benchmarking of old ZSHA Scheme (ACNS) and new construction (QUILT)
+// Performs benchmarking for ZSHA Scheme (ZSHA) and new construction (QUILT)
+// The schemes are evaluated for all algorithms: setup, encryption, keygen and decryption.
+// You can choose the parameters of m and the x-axis, as well if decryption should be performed on sparse functions or arbitrary functions and with or without final search step
+// Plaintexts and FunctionCoefficients are sampled randomly from the given range.
 func main() {
 
 	t := time.Now()
-	rounds := 5.0
+	rounds := 1.0
 
-	fileACNS := "results/ACNS_Keygen" + t.Format("02_01_15:04") + ".txt"
+	fileZSHA := "results/ZSHA" + t.Format("02_01_15:04") + ".txt"
+	fileQUILT := "results/QUILT_" + t.Format("02_01_15:04") + ".txt"
 
-	fileNMCFE := "results/NMCFE_" + t.Format("02_01_15:04") + ".txt"
-
-	files := []string{fileACNS, fileNMCFE}
+	files := []string{fileZSHA, fileQUILT}
 
 	debug := true
 	// choose the parameters for the scheme
@@ -39,18 +41,26 @@ func main() {
 	boundN := big.NewInt(10)
 	sizes := [][]int{}
 
+	//choose if decryption is performed with or without the final search step
 	logSearch = false
 
 	//describes how many coefficients are != 0 in the polynomial
-	coeffManipulation = false
-	minCoeffN0 := 0
-	cCoeff := 10
+	coeffManipulation = false //describes if random functions with arbitrary coefficients are chosen or if the number is manipulated
+	minCoeffN0 := 0           //min #coeff != 0
+	maxCoeffN0 := 200         //max #coeff != 0, only necessary if coeffMan. = true
 
-	cj := 25
+	//incremetion step counter:
+	cCoeff := 50 //incremention step for #coeff != 0
+	cX := 5.0    //50.0   //counter for x axis
+	cj := 25     //counter for vectorlength
+
+	//range of data set size
 	minX := 0.0
-	maxX := 20000.0
+	maxX := 1 //20000.0
 
-	for j := 0; j <= 50; j = j + cj {
+	//set vectorlength range
+	maxJ := 1 // 50
+	for j := 0; j <= maxJ; j = j + cj {
 		l := j
 		if j == 0 {
 			l = j + 1
@@ -62,8 +72,7 @@ func main() {
 			cj = 25
 		}
 
-		cX := 50.0
-
+		//set i accordingly
 		for i := int(math.Ceil(minX / float64(l))); i*l <= int(maxX)+int(math.Ceil(cX/float64(l))); i = i + int(math.Ceil(cX/float64(l))) {
 
 			k := i
@@ -80,9 +89,7 @@ func main() {
 			if i*l >= 50 {
 				cX = 100
 			}
-			// if i*l >= 500 {
-			// 	cX = 250
-			// }
+
 			if i*l >= 500 {
 				cX = 500
 			}
@@ -94,27 +101,40 @@ func main() {
 		}
 	}
 
+	if debug {
+		fmt.Printf("sizes: %v\n", sizes)
+		//return
+	}
 	count := 0
 
 	for j := 0; j < len(files); j++ {
 
-		write(files[j], fmt.Sprintln("N, #numClient, #vecLen, #coeff!=0, KeyGeneration, Encryption, DeriveKey, DecryptionWOSearch Time in Nanoseconds"), false)
+		if !logSearch {
+			write(files[j], fmt.Sprintln("N, #numClient, #vecLen, #coeff!=0, Setup, Encryption, DeriveKey, DecryptionWOSearch Time in Nanoseconds"), false)
+		} else {
+			write(files[j], fmt.Sprintln("N, #numClient, #vecLen, #coeff!=0, Setup, Encryption, DeriveKey, Decryption Time in Nanoseconds"), false)
+		}
+
 	}
 
 	for i := 0; i < len(sizes); i++ {
+
+		if debug {
+			fmt.Println("************************************* New Parameters ******************************")
+		}
 
 		// sample vectors that will be encrypted
 		n := sizes[i][0]
 		m := sizes[i][1]
 
-		maxCoeffN0 := 0
-
+		//cound maximal number of possible coefficients != 0
+		numCoeff := 0
 		for i := 0; i < n+1; i++ {
 			for j := 0; j < m; j++ {
 				for k := 0; k < n+1; k++ {
 					for l := 0; l < m; l++ {
 						if i < k || (i == k && j <= l) {
-							maxCoeffN0++
+							numCoeff++
 						}
 					}
 				}
@@ -122,14 +142,18 @@ func main() {
 		}
 
 		if !coeffManipulation {
-			minCoeffN0 = maxCoeffN0
+			minCoeffN0 = numCoeff
+			maxCoeffN0 = numCoeff
 		} else {
-			fmt.Printf("counter coeff != 0 maximal: %v\n", maxCoeffN0)
-			fmt.Printf("used maximal coeff != 0: %v\n", maxCoeffN0)
-			return
+			if debug {
+				fmt.Printf("counter coeff != 0 maximal possible: %v\n", numCoeff)
+				fmt.Printf("used  coeff != 0 range up to: %v\n", maxCoeffN0)
+
+			}
+
 		}
 
-		for sparseLevel := minCoeffN0; sparseLevel <= maxCoeffN0; sparseLevel += cCoeff {
+		for sparseLevel := minCoeffN0; sparseLevel <= int(math.Min(float64(maxCoeffN0), float64(numCoeff))); sparseLevel += cCoeff {
 			if sparseLevel > 90 {
 				cCoeff = 100
 			}
@@ -137,7 +161,7 @@ func main() {
 				cCoeff = 1000
 			}
 
-			var timeKG, timeEnc, timeDK, timeDec time.Duration
+			var timeSetup, timeEnc, timeDK, timeDec time.Duration
 			tS := make([][]float64, 4)
 			for i := 0; i < len(tS); i++ {
 				tS[i] = []float64{0.0, 0.0}
@@ -152,20 +176,20 @@ func main() {
 				}
 
 				if sizes[i][1] == 1 {
-					_, timeKG, timeEnc, timeDK, timeDec = runACNS(secLevel, sizes[i][1], sizes[i][0]+1, sparseLevel, boundX, boundY, boundN, x, debug)
+					timeSetup, timeEnc, timeDK, timeDec = runZSHA(secLevel, sizes[i][1], sizes[i][0]+1, sparseLevel, boundX, boundY, boundN, x, debug)
 
 					count = 0
-					tS[0][count] += float64(timeKG.Nanoseconds())
+					tS[0][count] += float64(timeSetup.Nanoseconds())
 					tS[1][count] += float64(timeEnc.Nanoseconds())
 					tS[2][count] += float64(timeDK.Nanoseconds())
 					tS[3][count] += float64(timeDec.Nanoseconds())
 
 				}
 
-				_, timeKG, timeEnc, timeDK, timeDec = runNMCFE(secLevel, sizes[i][1], sizes[i][0], sparseLevel, boundX, boundY, boundN, x, debug)
+				timeSetup, timeEnc, timeDK, timeDec = runQUILT(secLevel, sizes[i][1], sizes[i][0], sparseLevel, boundX, boundY, boundN, x, debug)
 
 				count = 1
-				tS[0][count] += float64(timeKG.Nanoseconds())
+				tS[0][count] += float64(timeSetup.Nanoseconds())
 				tS[1][count] += float64(timeEnc.Nanoseconds())
 				tS[2][count] += float64(timeDK.Nanoseconds())
 				tS[3][count] += float64(timeDec.Nanoseconds())
@@ -184,9 +208,10 @@ func main() {
 
 }
 
-func runACNS(secLevel, vecLen, numClient, sparseLevel int, boundX, boundY, boundN *big.Int, xH data.Matrix, debug bool) (time.Duration, time.Duration, time.Duration, time.Duration, time.Duration) {
+// runs the ZSHA scheme for given input parameters and outputs the needed time per algorithm
+func runZSHA(secLevel, vecLen, numClient, sparseLevel int, boundX, boundY, boundN *big.Int, xH data.Matrix, debug bool) (time.Duration, time.Duration, time.Duration, time.Duration) {
 	if debug {
-		fmt.Println("******************ACNS******************")
+		fmt.Println("******************ZSHA******************")
 		fmt.Println("N:", numClient*vecLen, "numClients: ", numClient-1, " VecLen: ", vecLen, "sparseLevel:", sparseLevel)
 		//fmt.Println("achieved true quadratic functionality by setting m=m+1")
 	}
@@ -198,21 +223,15 @@ func runACNS(secLevel, vecLen, numClient, sparseLevel int, boundX, boundY, bound
 
 	}
 
-	start := time.Now()
-
 	// build the scheme
 	fe := noisy.NewSMNH(secLevel, numClient, vecLen, boundX, boundY, boundN)
+
+	// generate master secret key, encryption keys and public key
+	start := time.Now()
+	masterSecKey, enckeys, pubKey, _ := fe.GenerateKeys()
 	timeSetup := time.Since(start)
 	if debug {
 		fmt.Println("time Setup: ", timeSetup)
-	}
-	// generate master secret key, encryption keys and public key
-	start = time.Now()
-	masterSecKey, enckeys, pubKey, _ := fe.GenerateKeys()
-
-	timeKG := time.Since(start)
-	if debug {
-		fmt.Println("time Key Generation: ", timeKG)
 	}
 
 	// // Setup a channel for collecting results
@@ -319,53 +338,61 @@ func runACNS(secLevel, vecLen, numClient, sparseLevel int, boundX, boundY, bound
 		fmt.Println("time Function Key generation: ", timeDK)
 	}
 
+	// terminate code if the decryption process would be to costly
 	if !coeffManipulation && numClient > 300 {
-		return timeSetup, timeKG, timeEnc, timeDK, 0
+		return timeSetup, timeEnc, timeDK, 0
 	}
 
-	// simulate a decryptor
-	decryptor := noisy.NewSMNHFromParams(fe.Params)
+	//performs decryption process with or without search step
+	var timeDec time.Duration
+	if !logSearch {
 
-	// decryptor decrypts the quadratic function without knowing
-	// vectors x and c
-	start = time.Now()
+		start = time.Now()
+		fe.DecryptWOSearch(cipher, key, pubKey)
+		timeDec = time.Since(start)
 
-	decryptor.DecryptWOSearch(cipher, key, pubKey)
-	timeDec := time.Since(start)
+		if debug {
+			fmt.Println("time Decryption WO Search: ", timeDec)
+		}
+	} else {
 
-	if debug {
+		start = time.Now()
+		_, err := fe.DecryptWOSearch(cipher, key, pubKey)
+		if err != nil {
+			fmt.Println(err)
+		}
+		timeDec = time.Since(start)
 
-		fmt.Println("time Decryption WOSearch: ", timeDec)
+		if debug {
+			fmt.Println("time Decryption WITH Search: ", timeDec)
+		}
+
 	}
 
-	return timeSetup, timeKG, timeEnc, timeDK, timeDec
+	return timeSetup, timeEnc, timeDK, timeDec
 }
 
-func runNMCFE(secLevel, vecLen, numClient, sparseLevel int, boundX, boundY, boundN *big.Int, x data.Matrix, debug bool) (time.Duration, time.Duration, time.Duration, time.Duration, time.Duration) {
+// runs the QUILT scheme for given input parameters and outputs the needed time per algorithm
+func runQUILT(secLevel, vecLen, numClient, sparseLevel int, boundX, boundY, boundN *big.Int, x data.Matrix, debug bool) (time.Duration, time.Duration, time.Duration, time.Duration) {
 	if debug {
-		fmt.Println("******************NMCFE_Quad******************")
+		fmt.Println("******************QUILT******************")
 		fmt.Println("N:", numClient*vecLen, "numClients: ", numClient, " VecLen: ", vecLen, "sparseLevel:", sparseLevel)
 	}
 	label := make([]byte, 16)
 
-	start := time.Now()
 	// build the scheme
-	fe := noisy.NewOTNMCFE(secLevel, numClient, vecLen, boundX, boundY, boundN)
+	fe := NewOTNMCFE(secLevel, numClient, vecLen, boundX, boundY, boundN)
+
+	// generate master secret key, encryption keys and public key
+	start := time.Now()
+	masterSecKey, enckeys, pubKey, _ := fe.GenerateKeys()
 	timeSetup := time.Since(start)
 	if debug {
 		fmt.Println("time Setup: ", timeSetup)
 	}
 
-	// generate master secret key, encryption keys and public key
-	start = time.Now()
-	masterSecKey, enckeys, pubKey, _ := fe.GenerateKeys()
-	timeKG := time.Since(start)
-	if debug {
-		fmt.Println("time Key Generation: ", timeKG)
-	}
-
-	// Setup a channel for collecting results
-	cipher := make([]*noisy.OTNMCFECT, numClient)
+	//Perform Encryption
+	cipher := make([]*OTNMCFECT, numClient)
 	var wg sync.WaitGroup
 	var timeEnc time.Duration
 	maxWorkers := runtime.NumCPU()
@@ -378,8 +405,8 @@ func runNMCFE(secLevel, vecLen, numClient, sparseLevel int, boundX, boundY, boun
 
 		go func() {
 			defer wg.Done()
-			sem <- struct{}{}        // acquire slot
-			defer func() { <-sem }() // release slot
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
 			if i == 0 {
 				start = time.Now()
@@ -415,12 +442,12 @@ func runNMCFE(secLevel, vecLen, numClient, sparseLevel int, boundX, boundY, boun
 	sem = make(chan struct{}, maxWorkers)
 
 	for i := 0; i < numClient; i++ {
-		i := i // capture loop variable
+		i := i
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			sem <- struct{}{}        // acquire slot
-			defer func() { <-sem }() // release slot
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
 			yQuad[i] = make([]data.Matrix, vecLen)
 			for j := 0; j < vecLen; j++ {
@@ -489,15 +516,16 @@ func runNMCFE(secLevel, vecLen, numClient, sparseLevel int, boundX, boundY, boun
 		timeDec = time.Since(start)
 
 		if debug {
-			fmt.Println("time Decryption WITH! Search: ", timeDec)
+			fmt.Println("time Decryption WITH Search: ", timeDec)
 		}
 
 	}
 
-	return timeSetup, timeKG, timeEnc, timeDK, timeDec
+	return timeSetup, timeEnc, timeDK, timeDec
 
 }
 
+// writes results into file
 func write(filename string, message string, append bool) {
 
 	var file *os.File
