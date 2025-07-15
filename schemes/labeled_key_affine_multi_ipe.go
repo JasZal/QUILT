@@ -18,7 +18,7 @@
 NOTE: This file is copied from the original gofe library and edited to obtain a new labeled-key constant function hiding MIFE scheme!
 */
 
-package main
+package schemes
 
 import (
 	"crypto/aes"

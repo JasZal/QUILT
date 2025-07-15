@@ -16,7 +16,7 @@
 
 //This is a file copied from the gofe library to enable discrete log search!
 
-package main
+package schemes
 
 import (
 	"crypto/sha1"

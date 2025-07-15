@@ -1,6 +1,7 @@
 package main
 
 import (
+	"QUILT/schemes"
 	"fmt"
 	"log"
 	"math"
@@ -51,15 +52,15 @@ func main() {
 
 	//incremetion step counter:
 	cCoeff := 50 //incremention step for #coeff != 0
-	cX := 5.0    //50.0   //counter for x axis
+	cX := 50.0   //counter for x axis
 	cj := 25     //counter for vectorlength
 
 	//range of data set size
 	minX := 0.0
-	maxX := 1 //20000.0
+	maxX := 20000.0
 
 	//set vectorlength range
-	maxJ := 1 // 50
+	maxJ := 50
 	for j := 0; j <= maxJ; j = j + cj {
 		l := j
 		if j == 0 {
@@ -385,7 +386,7 @@ func runQUILT(secLevel, vecLen, numClient, sparseLevel int, boundX, boundY, boun
 	label := make([]byte, 16)
 
 	// build the scheme
-	fe := NewOTNMCFE(secLevel, numClient, vecLen, boundX, boundY, boundN)
+	fe := schemes.NewOTNMCFE(secLevel, numClient, vecLen, boundX, boundY, boundN)
 
 	// generate master secret key, encryption keys and public key
 	start := time.Now()
@@ -396,7 +397,7 @@ func runQUILT(secLevel, vecLen, numClient, sparseLevel int, boundX, boundY, boun
 	}
 
 	//Perform Encryption
-	cipher := make([]*OTNMCFECT, numClient)
+	cipher := make([]*schemes.OTNMCFECT, numClient)
 	var wg sync.WaitGroup
 	var timeEnc time.Duration
 	maxWorkers := runtime.NumCPU()
