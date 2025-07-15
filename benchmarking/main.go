@@ -72,7 +72,7 @@ func main() {
 			cj = 25
 		}
 
-		//set i accordingly
+		//set k (num of clients) accordingly
 		for i := int(math.Ceil(minX / float64(l))); i*l <= int(maxX)+int(math.Ceil(cX/float64(l))); i = i + int(math.Ceil(cX/float64(l))) {
 
 			k := i
@@ -103,8 +103,12 @@ func main() {
 
 	if debug {
 		fmt.Printf("sizes: %v\n", sizes)
-		//return
 	}
+
+	//create table in paper
+	//sizes = [][]int{{2, 1}, {2, 2}, {2, 3}, {10, 1}, {10, 2}, {10, 3}, {100, 1}, {100, 2}, {100, 1}}
+	//logSearch = true
+
 	count := 0
 
 	for j := 0; j < len(files); j++ {
