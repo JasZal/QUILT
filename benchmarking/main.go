@@ -102,14 +102,13 @@ func main() {
 		}
 	}
 
-	if debug {
-		fmt.Printf("sizes: %v\n", sizes)
-	}
-
 	//create table in paper
 	//sizes = [][]int{{2, 1}, {2, 2}, {2, 3}, {10, 1}, {10, 2}, {10, 3}, {100, 1}, {100, 2}, {100, 1}}
 	//logSearch = true
 
+	if debug {
+		fmt.Printf("sizes: %v\n", sizes)
+	}
 	count := 0
 
 	for j := 0; j < len(files); j++ {
@@ -181,7 +180,7 @@ func main() {
 				}
 
 				if sizes[i][1] == 1 {
-					timeSetup, timeEnc, timeDK, timeDec = runZSHA(secLevel, sizes[i][1], sizes[i][0]+1, sparseLevel, boundX, boundY, boundN, x, debug)
+					//	timeSetup, timeEnc, timeDK, timeDec = runZSHA(secLevel, sizes[i][1], sizes[i][0]+1, sparseLevel, boundX, boundY, boundN, x, debug)
 
 					count = 0
 					tS[0][count] += float64(timeSetup.Nanoseconds())
@@ -386,7 +385,7 @@ func runQUILT(secLevel, vecLen, numClient, sparseLevel int, boundX, boundY, boun
 	label := make([]byte, 16)
 
 	// build the scheme
-	fe := schemes.NewOTNMCFE(secLevel, numClient, vecLen, boundX, boundY, boundN)
+	fe := schemes.NewOTNMCFE(secLevel, numClient, vecLen, boundX, boundY, boundN, nil)
 
 	// generate master secret key, encryption keys and public key
 	start := time.Now()

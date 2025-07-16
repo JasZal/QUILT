@@ -1,55 +1,49 @@
 package main
 
 import (
+	"QUILT/schemes"
 	"fmt"
 	"log"
 	"math"
 	"math/big"
+	"runtime"
 	"sync"
 	"time"
 
 	"github.com/JasZal/gofe/data"
-	"github.com/JasZal/gofe/quadratic/noisy"
-	"github.com/fentec-project/bn256"
 	"github.com/google/differential-privacy/go/noise"
 )
 
 type Authority struct {
-	secLevel  int
-	vecLen    int
-	numClient int
-	boundX    *big.Int
-	boundY    *big.Int
-	boundN    *big.Int
-	pubKey    *bn256.GT
-	encKeys   []*noisy.SMNHEncKey
-	msk       *noisy.SMNHSecKey
-	fe        *noisy.SMNH
-	epsilon   float64
-	delta     float64
-	scaling   int64
-	ymax      float64
+	secLevel int
+	m        int
+	n        int
+	boundT   *big.Int
+	pubKey   *schemes.OTNMCFEPP
+	encKeys  []schemes.OTNMCFEEncKey
+	msk      *schemes.OTNMCFESecKey
+	fe       *schemes.OTNMCFE
+	epsilon  float64
+	delta    float64
+	scaling  int64
 }
 
-func NewAuthority(secL int, vecL int, numC int, bX, bY, bN *big.Int, e, d float64, scal int64, y float64) (*Authority, time.Duration) {
+func NewAuthority(secL int, m int, n int, bT *big.Int, e, d float64, scal int64) (*Authority, time.Duration) {
 	a := &Authority{
-		secLevel:  secL,
-		vecLen:    vecL,
-		numClient: numC,
-		boundX:    bX,
-		boundY:    bY,
-		boundN:    bN,
-		epsilon:   e,
-		delta:     d,
-		scaling:   scal,
-		ymax:      y,
+		secLevel: secL,
+		m:        m,
+		n:        n,
+		boundT:   bT,
+		epsilon:  e,
+		delta:    d,
+		scaling:  scal,
 	}
 
 	var err error
 	start := time.Now()
-	a.fe = noisy.NewSMNH(a.secLevel, a.numClient, a.vecLen, a.boundX, a.boundY, a.boundN)
-	timeSetup := time.Since(start)
+	a.fe = schemes.NewOTNMCFE(a.secLevel, a.n, a.m, nil, nil, nil, bT)
 	a.msk, a.encKeys, a.pubKey, err = a.fe.GenerateKeys()
+	timeSetup := time.Since(start)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -57,31 +51,26 @@ func NewAuthority(secL int, vecL int, numC int, bX, bY, bN *big.Int, e, d float6
 	return a, timeSetup
 }
 
-func computeInfSen(theta []float64, alpha, b, scaling, maxy float64, logReg bool) float64 {
+// computes the InfSensitivity of a log Reg
+func computeInfSen(theta []float64, alpha, scaling, numClients float64) float64 {
 	sum := 0.0
 	for i := 0; i < len(theta); i++ {
 		sum += math.Abs(theta[i])
 	}
-	if logReg {
-		//logistic Regression
-		return alpha / b * (1 + 0.25*sum)
-	} else {
-		//Linear Regression
-
-		return (alpha*maxy)/b + (alpha/b)*sum
-
-	}
+	return alpha / numClients * (1 + 0.25*sum)
 
 }
 
+// computes the zeroSensitivity of a log Reg
 func compute0Sen(theta []float64) int64 {
 	return int64(len(theta))
 }
 
-func computeNoise(theta []float64, alpha, b, scaling, maxy, eps, del float64, logReg bool) []float64 {
+// samples Noise according to requested function
+func computeNoise(theta []float64, alpha, scaling, eps, del, numClients float64) []float64 {
 	n := make([]float64, len(theta))
 
-	infSen := computeInfSen(theta, alpha, b, scaling, maxy, logReg)
+	infSen := computeInfSen(theta, alpha, scaling, numClients)
 	zeroSen := compute0Sen(theta)
 
 	//noise via gauss
@@ -92,7 +81,7 @@ func computeNoise(theta []float64, alpha, b, scaling, maxy, eps, del float64, lo
 
 	}
 
-	//fmt.Printf("n: %v\n", n)
+	//debug(fmt.Sprintf("n: %v\n", n))
 
 	for j := 0; j < len(n); j++ {
 		n[j] *= (math.Pow(scaling, 3))
@@ -104,15 +93,13 @@ func computeNoise(theta []float64, alpha, b, scaling, maxy, eps, del float64, lo
 		}
 	}
 
-	//n = make([]float64, len(theta))
-
 	return n
 }
 
-func (a *Authority) generateFunctionKey(y [][]data.Matrix, noise *big.Int) (*noisy.SMNHDK, error) {
+func (a *Authority) generateFunctionKey(yQuad [][]data.Matrix, yLin data.Matrix, yCon *big.Int, noise *big.Int, label []byte) (*schemes.OTNMCFEDecKey, error) {
 
 	// derive a functional key for vector y
-	key, err := a.fe.DeriveKey(y, noise, a.msk)
+	key, err := a.fe.DeriveKey(yQuad, yLin, yCon, noise, label, a.msk)
 	if err != nil {
 		fmt.Println("Error during key derivation:", err)
 	}
@@ -120,27 +107,31 @@ func (a *Authority) generateFunctionKey(y [][]data.Matrix, noise *big.Int) (*noi
 	return key, nil
 }
 
-func (a Authority) generateDK(theta []float64, bstart, bend, attr int, eps, del, alpha float64, logReg bool, nrWorkers int) []*noisy.SMNHDK {
+func (a Authority) generateDK(theta []float64, attr int, numRec, eps, del, alpha float64, label []byte) ([]*schemes.OTNMCFEDecKey, [][][]data.Matrix) {
 	// generate inner product vectors and put them in a matrix
 
 	cols := attr + 1
-	b := float64(bend - bstart + 1)
-	dk := make([]*noisy.SMNHDK, cols)
+	chunkCount := int(math.Ceil(float64(cols) / float64(a.m)))
+	dk := make([]*schemes.OTNMCFEDecKey, cols)
 
 	//check if key is permitted
 
 	//check privacy budget
-
-	nu := computeNoise(theta, alpha, b, float64(a.scaling), a.ymax, eps, del, logReg)
-
+	nu := computeNoise(theta, alpha, float64(a.scaling), eps, del, float64(numRec))
+	var quad [][][]data.Matrix
 	var err error
 	for j := 0; j < attr; j++ {
+		yQuad := make([][]data.Matrix, a.n)
+		yLin := data.NewConstantMatrix(a.n, a.m, big.NewInt(0))
 
-		c := make([][]data.Matrix, a.numClient)
-		for i := 0; i < a.numClient; i++ {
-			c[i] = make([]data.Matrix, a.vecLen)
-			for k := 0; k < a.vecLen; k++ {
-				c[i][k] = data.NewConstantMatrix(a.numClient, a.vecLen, big.NewInt(0))
+		//const. value: c[0000] = theta[j]
+		yCon := big.NewInt(int64(math.Round(theta[j] * float64(a.scaling))))
+
+		//initialize yQuad
+		for i := 0; i < a.n; i++ {
+			yQuad[i] = make([]data.Matrix, a.m)
+			for k := 0; k < a.m; k++ {
+				yQuad[i][k] = data.NewConstantMatrix(a.n, a.m, big.NewInt(0))
 			}
 		}
 
@@ -148,125 +139,108 @@ func (a Authority) generateDK(theta []float64, bstart, bend, attr int, eps, del,
 
 		chIn := make(chan int)
 
-		for i := 0; i < nrWorkers; i++ {
+		for i := 0; i < runtime.NumCPU(); i++ {
 			wg.Add(1)
 			go func(chIn chan int) {
 				defer wg.Done()
 				for i := range chIn {
+					// linear term  -alpha * (2 + theta[attr]) / (4*numRec) * x_i[j]
+					yH := -1 * alpha * (2 + theta[attr]) / (4.0 * numRec)
+					yLin[i*chunkCount+j/a.m][j%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
 
-					yH := alpha / b
-					c[i*cols+j+1][0][(i+1)*cols][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
+					//set quadratic terms
+					//alpha/numRec*x_i[attr]x_i[j]
+					yH = alpha / numRec
+					yQuad[i*chunkCount+attr/a.m][attr%a.m][i*chunkCount+j/a.m][j%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
+					//c[i*cols+j+1][0][(i+1)*cols][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
 
 					for k := 0; k < attr; k++ {
-						yH = -1 * theta[k] * alpha / b
-						if logReg {
-							//logistic Regression
-							yH *= 1.0 / 4.0
-						}
+						//-alpha*Thetak/4numRec * x_i[k]x_i[j]
+						yH = (-1 * theta[k] * alpha) / (4 * numRec)
 						if k <= j {
-							c[i*cols+k+1][0][i*cols+j+1][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
+							yQuad[i*chunkCount+k/a.m][k%a.m][i*chunkCount+j/a.m][j%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
+							//c[i*cols+k+1][0][i*cols+j+1][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
 						} else {
-							c[i*cols+j+1][0][i*cols+k+1][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
+							yQuad[i*chunkCount+j/a.m][j%a.m][i*chunkCount+k/a.m][k%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
+							//c[i*cols+j+1][0][i*cols+k+1][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
 
 						}
 					}
-					yH = -1 * theta[attr] * alpha / b
-					if logReg {
-						//logistic Regression
-						yH = -1 * alpha * (2 + theta[attr]) / (4.0 * b)
-					}
-					c[0][0][i*cols+j+1][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
 				}
 			}(chIn)
 
 		}
-
-		for i := bstart; i < bend; i++ {
+		for i := 0; i < int(numRec); i++ {
 			chIn <- i
 		}
 
 		close(chIn)
 		wg.Wait()
-
-		c[0][0][0][0] = big.NewInt(int64(math.Round(theta[j] * float64(a.scaling))))
-
-		dk[j], err = a.generateFunctionKey(c, big.NewInt(int64(nu[j])))
+		quad = append(quad, yQuad)
+		dk[j], err = a.generateFunctionKey(yQuad, yLin, yCon, big.NewInt(int64(nu[j])), label)
 		if err != nil {
 			log.Fatal("Error during Function Key Derivation:", err)
 		}
 	}
 
-	c := make([][]data.Matrix, a.numClient)
-	for i := 0; i < a.numClient; i++ {
-		c[i] = make([]data.Matrix, a.vecLen)
-		for j := 0; j < a.vecLen; j++ {
-			c[i][j] = data.NewConstantMatrix(a.numClient, a.vecLen, big.NewInt(0))
+	//bias term
+	yQuad := make([][]data.Matrix, a.n)
+	yLin := data.NewConstantMatrix(a.n, a.m, big.NewInt(0))
+	//theta[attr]-alpha/numRec - alpha*theta[attr]/3*numRec
+	yH := theta[attr] - alpha/numRec - alpha*theta[attr]/(3*numRec)
+	yCon := big.NewInt(int64(math.Round(yH * float64(a.scaling))))
+	//initialize yQuad
+	for i := 0; i < a.n; i++ {
+		yQuad[i] = make([]data.Matrix, a.m)
+		for k := 0; k < a.m; k++ {
+			yQuad[i][k] = data.NewConstantMatrix(a.n, a.m, big.NewInt(0))
 		}
 	}
 
-	//bias term
 	wg := sync.WaitGroup{}
 
 	chIn := make(chan int)
 
-	for i := 0; i < nrWorkers; i++ {
+	for i := 0; i < runtime.NumCPU(); i++ {
 		wg.Add(1)
 		go func(chIn chan int) {
 			defer wg.Done()
 			for i := range chIn {
+				// linear term  alpha *  / (numRec) * x_i[attr]
+				yH := alpha / numRec
+				yLin[i*chunkCount+attr/a.m][attr%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
 
-				yH := alpha / b
-
-				c[0][0][(i+1)*(cols)][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
 				for k := 0; k < attr; k++ {
-
-					yH = -1 * theta[k] * alpha / b
-
-					if logReg {
-						//logistic Regression
-						yH *= 1.0 / 4.0
-					}
-
-					c[0][0][i*cols+k+1][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
-
+					//-alpha*Thetak/4numRec * x_i[k]x_i[j]
+					yH = (-1 * theta[k] * alpha) / (4 * numRec)
 				}
-
 			}
 		}(chIn)
-
 	}
-
-	for i := bstart; i < bend; i++ {
+	for i := 0; i < int(numRec); i++ {
 		chIn <- i
 	}
 
 	close(chIn)
 	wg.Wait()
-
-	yH := theta[attr] - theta[attr]*alpha
-	if logReg {
-		//logistic Regression
-		yH = theta[attr] - alpha/b - alpha*theta[attr]/(3*b)
-	}
-	z := big.NewInt(int64(math.Round(yH * float64(a.scaling))))
-	c[0][0][0][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
-	//fmt.Printf("c: %v\n", c)
-	dk[attr], err = a.generateFunctionKey(c, big.NewInt(int64(nu[attr])))
+	quad = append(quad, yQuad)
+	dk[attr], err = a.generateFunctionKey(yQuad, yLin, yCon, big.NewInt(int64(nu[attr])), label)
 	if err != nil {
-		log.Fatal("Error during Function Key Derivation: ", err)
+		log.Fatal("Error during Function Key Derivation:", err)
 	}
-	UNUSED(z)
-	return dk
+
+	return dk, quad
+
 }
 
-func (a Authority) getEncryptionKey(pos int) *noisy.SMNHEncKey {
+func (a Authority) getEncryptionKey(pos int) schemes.OTNMCFEEncKey {
 	return a.encKeys[pos]
 }
 
-func (a Authority) getParams() *noisy.SMNHParams {
+func (a Authority) getParams() *schemes.OTNMCFEParams {
 	return a.fe.Params
 }
 
-func (a Authority) getPP() *bn256.GT {
+func (a Authority) getPP() *schemes.OTNMCFEPP {
 	return a.pubKey
 }

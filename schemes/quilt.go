@@ -17,6 +17,7 @@
 package schemes
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
@@ -41,15 +42,16 @@ import (
 // paramsOT: parameters of the ot scheme
 // paramsFH: parameters of the fh scheme
 type OTNMCFEParams struct {
-	SecLevel   int      //k
-	NumClients int      //n
-	VecLen     int      //m
-	BoundX     *big.Int //X
-	BoundY     *big.Int //C
-	BoundNoise *big.Int //Delta
-	Modulus    *big.Int //modulus p
-	paramsOT   *noisy.OTPRFParams
-	paramsFH   *LKADOTParams
+	SecLevel   int //k
+	NumClients int //n
+	VecLen     int //m
+	// BoundX     *big.Int //X
+	// BoundY     *big.Int //C
+	// BoundNoise *big.Int //Delta
+	BoundT   *big.Int
+	Modulus  *big.Int //modulus p
+	paramsOT *noisy.OTPRFParams
+	paramsFH *LKADOTParams
 }
 
 // This struct contains the shared choice for parameters on which the
@@ -98,13 +100,31 @@ type OTNMCFECT struct {
 // decrypt the sum of c[(i,j,k,l)]xi[j]xk[l] + noise where noise is sampled via the distribution Delta, without revealing
 // intermediate results.
 // The scheme is based on a function-hiding labeled key ot-MCFE scheme and a noise-hiding labeled ot-MCFE  scheme
-func NewOTNMCFE(secLevel, numClients, vecLen int, boundX, boundY, boundN *big.Int) *OTNMCFE {
+func NewOTNMCFE(secLevel, numClients, vecLen int, boundX, boundY, boundN, boundT *big.Int) *OTNMCFE {
 	//use hybrid version, fhmife works best for small vecLen, nmife the contrary
 	nmife := noisy.NewOTPRFModPrime(numClients, vecLen, bn256.Order, true)
 	fhmife := NewLKADOT(secLevel, numClients*vecLen, 1, boundX, boundY)
 
+	if boundT == nil {
+		if (boundX == nil) || (boundY == nil) || (boundN == nil) {
+			log.Println(errors.New("either boundT or the other bounds need to be set"))
+			return nil
+		}
+
+		//compute overall bound
+		//quad
+		b := (vecLen * vecLen * numClients * numClients)
+		boundT = new(big.Int).Mul(big.NewInt(int64(b)), new(big.Int).Mul(boundX, boundX))
+		boundT.Mul(boundT, boundY)
+		//lin
+		boundT.Add(boundT, new(big.Int).Mul(big.NewInt(int64(vecLen*numClients)), new(big.Int).Mul(boundX, boundY)))
+		//cons
+		boundT.Add(boundT, new(big.Int).Add(boundN, boundY))
+
+	}
+
 	params := &OTNMCFEParams{SecLevel: secLevel, NumClients: numClients,
-		VecLen: vecLen, BoundX: boundX, BoundY: boundY, BoundNoise: boundN, paramsOT: nmife.Params, paramsFH: fhmife.Params,
+		VecLen: vecLen, BoundT: boundT, paramsOT: nmife.Params, paramsFH: fhmife.Params,
 		Modulus: nmife.Params.ModulusL}
 
 	return &OTNMCFE{Params: params}
@@ -296,17 +316,7 @@ func (f OTNMCFE) Decrypt(dk *OTNMCFEDecKey, yQuad [][]data.Matrix, ct []*OTNMCFE
 		return nil, err
 	}
 
-	//compute overall bound
-	//quad
-	b := (f.Params.VecLen * f.Params.VecLen * f.Params.NumClients * f.Params.NumClients)
-	bound := new(big.Int).Mul(big.NewInt(int64(b)), new(big.Int).Mul(f.Params.BoundX, f.Params.BoundX))
-	bound.Mul(bound, f.Params.BoundY)
-	//lin
-	bound.Add(bound, new(big.Int).Mul(big.NewInt(int64(f.Params.VecLen*f.Params.NumClients)), new(big.Int).Mul(f.Params.BoundX, f.Params.BoundY)))
-	//cons
-	bound.Add(bound, new(big.Int).Add(f.Params.BoundNoise, f.Params.BoundY))
-
-	dec, err := NewCalc().InBN256().WithNeg().WithBound(bound).BabyStepGiantStep(r, pp.fhPP)
+	dec, err := NewCalc().InBN256().WithNeg().WithBound(f.Params.BoundT).BabyStepGiantStep(r, pp.fhPP)
 
 	return dec, err
 
