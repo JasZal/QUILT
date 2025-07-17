@@ -317,7 +317,9 @@ func (f OTNMCFE) Decrypt(dk *OTNMCFEDecKey, yQuad [][]data.Matrix, ct []*OTNMCFE
 	}
 
 	dec, err := NewCalc().InBN256().WithNeg().WithBound(f.Params.BoundT).BabyStepGiantStep(r, pp.fhPP)
-
+	if err != nil {
+		return nil, err
+	}
 	return dec, err
 
 }

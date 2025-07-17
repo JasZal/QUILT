@@ -53,7 +53,7 @@ func (e Evaluator) training(iterations, numRec int, alpha float64, boundR *big.I
 	debug(fmt.Sprintln("************Training***************"))
 
 	for i := 0; i < iterations; i++ {
-
+		debug(fmt.Sprintf("iteration: %v\n", i))
 		eps := e.epsilon*math.Pow(float64(i+1)/float64(iterations), 1.5) - e.epsilon*math.Pow(float64(i)/float64(iterations), 1.5)
 		epsTotal += eps
 		del := e.delta / float64(iterations)
@@ -61,6 +61,7 @@ func (e Evaluator) training(iterations, numRec int, alpha float64, boundR *big.I
 		start2 := time.Now()
 
 		t := time.Now()
+
 		dk, yQuad := e.a.generateDK(theta, e.attr, float64(numRec), eps, del, alpha, e.label)
 
 		fmt.Println("time generating DK: ", time.Since(t))
@@ -81,20 +82,20 @@ func (e Evaluator) training(iterations, numRec int, alpha float64, boundR *big.I
 		close(chIn)
 		wg.Wait()
 
-		timeI := time.Since(start2)
-		fmt.Printf("theta^%v: %v time: %v\n", i, theta, timeI)
+		//timeI := time.Since(start2)
+		//fmt.Printf("theta^%v: %v time: %v\n", i, theta, timeI)
 
-		UNUSED(t)
+		UNUSED(t, start2)
 	}
 
 	timeGD := time.Since(start)
-	fmt.Printf("time whole GD: %v\n", timeGD)
-	fmt.Println("***************************")
+	//fmt.Printf("time whole GD: %v\n", timeGD)
+
 	return theta, timeGD, nil
 
 }
 
-func (e *Evaluator) evaluate(dk []*schemes.OTNMCFEDecKey, yQuad [][][]data.Matrix, theta []float64, b *big.Int, chIn chan int, wg *sync.WaitGroup) {
+func (e *Evaluator) evaluate(dk []*schemes.OTNMCFEDecKey, yQuad [][][]data.Matrix, theta []float64, boundR *big.Int, chIn chan int, wg *sync.WaitGroup) {
 
 	defer wg.Done()
 	for i := range chIn {
@@ -108,6 +109,6 @@ func (e *Evaluator) evaluate(dk []*schemes.OTNMCFEDecKey, yQuad [][][]data.Matri
 		}
 
 		theta[i] = float64(res.Int64()) / math.Pow(float64(e.a.scaling), 3)
-		fmt.Printf("theta[%v]: %v\n", i, theta[i])
+		//fmt.Printf("theta[%v]: %v\n", i, theta[i])
 	}
 }

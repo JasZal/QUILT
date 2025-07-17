@@ -61,9 +61,9 @@ func main() {
 
 	//attributes
 	secLevel := 1
-	s := []int{1000}  //10000
-	iterations := 3   //25
-	epsilon := 5000.0 //5.0
+	s := []int{1000, 10000, 100000} //10000
+	iterations := 25                //25
+	epsilon := 5.0                  //5.0
 
 	//iterate over different scaling types
 	for _, scaling := range s {
@@ -72,15 +72,18 @@ func main() {
 		// boundX := big.NewInt(int64(10 * scaling))
 		// boundY := big.NewInt(int64(10 * scaling))
 		// boundN := big.NewInt(int64(1 * math.Pow(float64(scaling), 5)))
-		boundT := big.NewInt(int64(10 * scaling))
+		//boundRes := new(big.Int).Mul(boundR, big.NewInt(int64(math.Pow(float64(e.scaling), 3))))
+		//scaling 3 oder 4?
+		boundTheta := 10.0
+		boundT := big.NewInt(int64(boundTheta * math.Pow(float64(scaling), 3)))
 		label := make([]byte, 16)
 
 		//read data
 		//label is always assumed to be in the last slot
 		prefix := "./datasets/training"
-		files := []string{"test"} //"LBW", "PCS", "UIS"}
+		files := []string{"LBW", "PCS", "UIS"}
 		alphas := []float64{0.1, 0.3, 0.1}
-		splits := 1 //describes how many vertical splits are assumed
+		splits := 0 //describes how many vertical splits are assumed
 
 		postfix := ".csv"
 
@@ -152,8 +155,10 @@ func main() {
 				fmt.Printf("Runtime: %v\n", timeLogReg)
 				log.Fatal("Error during Training:", err)
 			}
-			fmt.Printf("main: theta: %v\n", theta)
-			fmt.Printf("main: time Reg: %v\n", timeLogReg)
+
+			fmt.Println("***************************")
+			fmt.Printf("main: final theta: %v\n", theta)
+			fmt.Printf("main: final time LogReg: %v\n", timeLogReg)
 			write(fileR, fmt.Sprintf("%v : %v\n", training, timeLogReg))
 
 		}
