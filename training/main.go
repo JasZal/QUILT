@@ -53,113 +53,125 @@ func UNUSED(x ...interface{}) {}
 // s: 			range of scaling factor
 // secLevel: 	secLevel of the underlying FE schemes
 // iterations: 	number of training iterations
-// epsilon: 		for DP (delta is set to 1/#rec)
+// epsilon: 		for DP (delta is set to 1/#rec) (does not have an affect on the runtime)
+// alpha: learning rate (does not have an affect on the runtime)
 // splits:		determines how many vertical splits are assumed in the data, if split == 0 , this means a maximal splitted dataset
+// rounds: how many rounds this should run
 func main() {
 	//file to save results
 	fileR := "results.txt"
 
 	//attributes
-	secLevel := 1
-	s := []int{1000, 10000, 100000} //10000
-	iterations := 25                //25
-	epsilon := 5.0                  //5.0
+	rounds := 2
+	splitsV := []int{0, 1} //describes how many vertical splits are assumed, 0 means maximal split
+
+	s := []int{1000, 10000} //100,10000
+	iterations := 25        //25
+	epsilon := 5.0          //5.0 //does not make a difference for runtime
+	secLevel := 1           //describes the secLevel of the scheme
 
 	//iterate over different scaling types
-	for _, scaling := range s {
-		write(fileR, fmt.Sprintf("%v :\n", scaling))
+	for _, splits := range splitsV {
+		if splits != 0 {
+			write(fileR, fmt.Sprintf("%v splits \n", splits))
+		} else {
+			write(fileR, "maximal splitted\n")
+		}
 
-		// boundX := big.NewInt(int64(10 * scaling))
-		// boundY := big.NewInt(int64(10 * scaling))
-		// boundN := big.NewInt(int64(1 * math.Pow(float64(scaling), 5)))
-		//boundRes := new(big.Int).Mul(boundR, big.NewInt(int64(math.Pow(float64(e.scaling), 3))))
-		//scaling 3 oder 4?
-		boundTheta := 10.0
-		boundT := big.NewInt(int64(boundTheta * math.Pow(float64(scaling), 3)))
-		label := make([]byte, 16)
+		for r := 0; r < rounds; r++ {
+			debug(fmt.Sprintf("split: %v, round: %v", splits, r))
+			for _, scaling := range s {
+				write(fileR, fmt.Sprintf("%v :\n", scaling))
 
-		//read data
-		//label is always assumed to be in the last slot
-		prefix := "./datasets/training"
-		files := []string{"LBW", "PCS", "UIS"}
-		alphas := []float64{0.1, 0.3, 0.1}
-		splits := 0 //describes how many vertical splits are assumed
+				boundTheta := 10.0 //10.0
+				boundT := big.NewInt(int64(boundTheta * math.Pow(float64(scaling), 3)))
+				label := make([]byte, 16)
 
-		postfix := ".csv"
+				//read data
+				//label is always assumed to be in the last slot
+				prefix := "./datasets/training"
+				files := []string{"LBW", "PCS", "UIS"}
+				alphas := []float64{0.1, 0.3, 0.1}
 
-		for tI, training := range files {
+				postfix := ".csv"
 
-			dataPlain, m, attr := loadData(prefix+training+postfix, scaling, splits)
-			n := len(dataPlain)
-			var numRec int
-			if splits != 0 {
-				numRec = int(float64(n) / float64((splits + 1)))
-			} else {
-				numRec = int(float64(n) / float64((attr + 1)))
-			}
+				for tI, training := range files {
 
-			alpha := alphas[tI]
-			delta := 1.0 / float64(numRec)
-
-			fmt.Printf("#rec: %v, #attr: %v, #label: 1, scaling: %v\n", numRec, attr, scaling)
-
-			var err error
-
-			//setup scheme/authority
-			a, tSetupA := NewAuthority(secLevel, m, n, boundT, epsilon, delta, int64(scaling))
-			if err != nil {
-				log.Fatal("Error during Setup:  %v", err)
-			}
-			debug("time Setup: " + tSetupA.String())
-
-			//setup clients/encrypt data
-			ct := make([]*schemes.OTNMCFECT, n)
-			wg := sync.WaitGroup{}
-
-			chIn := make(chan int)
-			startE := time.Now()
-
-			for i := 0; i < runtime.NumCPU(); i++ {
-				wg.Add(1)
-				go func(chIn chan int) {
-					defer wg.Done()
-					for i := range chIn {
-						client := schemes.NewOTNMCFEFromParams(a.getParams())
-						start := time.Now()
-						ct[i], err = client.Encrypt(a.getEncryptionKey(i), dataPlain[i], label)
-						timeEnc := time.Since(start)
-						if i == 0 {
-							debug("time Enc one rec: " + timeEnc.String())
-						}
+					dataPlain, m, attr := loadData(prefix+training+postfix, scaling, splits)
+					//fmt.Printf("dataPlain: %v\n", dataPlain)
+					n := len(dataPlain)
+					var numRec int
+					if splits != 0 {
+						numRec = int(float64(n) / float64((splits + 1)))
+					} else {
+						numRec = int(float64(n) / float64((attr + 1)))
 					}
-				}(chIn)
 
+					alpha := alphas[tI]
+					delta := 1.0 / float64(numRec)
+
+					debug(fmt.Sprintf("Dataset: %v, #rec: %v, #attr: %v, #label: 1, scaling: %v\n", training, numRec, attr, scaling))
+
+					var err error
+
+					//setup scheme/authority
+					a, tSetupA := NewAuthority(secLevel, m, n, boundT, epsilon, delta, int64(scaling))
+					if err != nil {
+						log.Fatal("Error during Setup:  %v", err)
+					}
+					debug("time Setup: " + tSetupA.String())
+
+					//setup clients/encrypt data
+					ct := make([]*schemes.OTNMCFECT, n)
+					wg := sync.WaitGroup{}
+
+					chIn := make(chan int)
+					startE := time.Now()
+
+					for i := 0; i < runtime.NumCPU(); i++ {
+						wg.Add(1)
+						go func(chIn chan int) {
+							defer wg.Done()
+							for i := range chIn {
+								client := schemes.NewOTNMCFEFromParams(a.getParams())
+								start := time.Now()
+								ct[i], err = client.Encrypt(a.getEncryptionKey(i), dataPlain[i], label)
+								timeEnc := time.Since(start)
+								if i == 0 {
+									debug("time Enc one rec: " + timeEnc.String())
+								}
+							}
+						}(chIn)
+
+					}
+
+					for i := 0; i < n; i++ {
+						chIn <- i
+					}
+
+					close(chIn)
+					wg.Wait()
+
+					tE := time.Since(startE)
+					debug(fmt.Sprintf("time Encryption total: %v\n", tE))
+
+					//setup evaluator
+					e := NewEvaluator(attr, n, scaling, ct, a, epsilon, delta, label)
+					//start training
+
+					theta, timeLogReg, err := e.training(iterations, numRec, alpha, boundT)
+					if err != nil {
+						debug(fmt.Sprintf("Runtime: %v\n", timeLogReg))
+						log.Fatal("Error during Training:", err)
+					}
+
+					debug(fmt.Sprintf("***************************"))
+					debug(fmt.Sprintf("main: final theta: %v\n", theta))
+					debug(fmt.Sprintf("main: final time LogReg: %v\n", timeLogReg))
+					write(fileR, fmt.Sprintf("%v : %v\n", training, timeLogReg))
+
+				}
 			}
-
-			for i := 0; i < n; i++ {
-				chIn <- i
-			}
-
-			close(chIn)
-			wg.Wait()
-
-			tE := time.Since(startE)
-			fmt.Printf("time Encryption total: %v\n", tE)
-
-			//setup evaluator
-			e := NewEvaluator(attr, n, scaling, ct, a, epsilon, delta, label)
-			//start training
-
-			theta, timeLogReg, err := e.training(iterations, numRec, alpha, boundT)
-			if err != nil {
-				fmt.Printf("Runtime: %v\n", timeLogReg)
-				log.Fatal("Error during Training:", err)
-			}
-
-			fmt.Println("***************************")
-			fmt.Printf("main: final theta: %v\n", theta)
-			fmt.Printf("main: final time LogReg: %v\n", timeLogReg)
-			write(fileR, fmt.Sprintf("%v : %v\n", training, timeLogReg))
 
 		}
 	}
@@ -211,19 +223,6 @@ func loadData(file string, scaling, splits int) (data.Matrix, int, int) {
 		}
 
 	}
-
-	// fmt.Println("original data")
-	// fmt.Printf("records: %v\n", records)
-
-	// fmt.Println("divided data")
-	// fmt.Println(dataX)
-
-	// //how to acces slot i,j directly:
-	// i := 1
-	// j := 0
-	// chunkIndex := i*chunkCount + (j / m)
-	// valueIndex := j % m
-	//fmt.Printf("record[%v][%v]: %v\n", i, j, dataX[chunkIndex][valueIndex])
 
 	return dataX, m, len(records[0]) - 1
 

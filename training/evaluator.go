@@ -53,23 +53,21 @@ func (e Evaluator) training(iterations, numRec int, alpha float64, boundR *big.I
 	debug(fmt.Sprintln("************Training***************"))
 
 	for i := 0; i < iterations; i++ {
-		debug(fmt.Sprintf("iteration: %v\n", i))
+		debug(fmt.Sprintf("iteration %v: ", i))
 		eps := e.epsilon*math.Pow(float64(i+1)/float64(iterations), 1.5) - e.epsilon*math.Pow(float64(i)/float64(iterations), 1.5)
 		epsTotal += eps
 		del := e.delta / float64(iterations)
-
-		start2 := time.Now()
 
 		t := time.Now()
 
 		dk, yQuad := e.a.generateDK(theta, e.attr, float64(numRec), eps, del, alpha, e.label)
 
-		fmt.Println("time generating DK: ", time.Since(t))
+		debug(fmt.Sprintf("time DK Gen:  %v, ", time.Since(t)))
 
 		var wg sync.WaitGroup
 
 		chIn := make(chan int)
-
+		start2 := time.Now()
 		for j := 0; j < runtime.NumCPU(); j++ {
 			wg.Add(1)
 			go e.evaluate(dk, yQuad, theta, boundRes, chIn, &wg)
@@ -82,8 +80,9 @@ func (e Evaluator) training(iterations, numRec int, alpha float64, boundR *big.I
 		close(chIn)
 		wg.Wait()
 
-		//timeI := time.Since(start2)
-		//fmt.Printf("theta^%v: %v time: %v\n", i, theta, timeI)
+		timeI := time.Since(start2)
+		debug(fmt.Sprintf("time Evaluation: %v\n", timeI))
+		//debug(fmt.Sprintf("theta^%v: %v time: %v\n", i, theta, timeI))
 
 		UNUSED(t, start2)
 	}

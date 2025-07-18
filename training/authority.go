@@ -109,9 +109,6 @@ func (a *Authority) generateFunctionKey(yQuad [][]data.Matrix, yLin data.Matrix,
 func (a Authority) generateDK(theta []float64, attr int, numRec, eps, del, alpha float64, label []byte) ([]*schemes.OTNMCFEDecKey, [][][]data.Matrix) {
 	// generate inner product vectors and put them in a matrix
 
-	//noch weiter parallelisieren? für jedes j?
-	// TODO
-
 	cols := attr + 1
 	chunkCount := int(math.Ceil(float64(cols) / float64(a.m)))
 	dk := make([]*schemes.OTNMCFEDecKey, cols)
@@ -128,7 +125,7 @@ func (a Authority) generateDK(theta []float64, attr int, numRec, eps, del, alpha
 		yLin := data.NewConstantMatrix(a.n, a.m, big.NewInt(0))
 
 		//const. value: c[0000] = theta[j]
-		yCon := big.NewInt(int64(math.Round(theta[j] * float64(a.scaling) * float64(a.scaling) * float64(a.scaling))))
+		yCon := big.NewInt(int64(math.Round(theta[j] * math.Pow(float64(a.scaling), 3))))
 
 		//initialize yQuad
 		for i := 0; i < a.n; i++ {
@@ -149,7 +146,7 @@ func (a Authority) generateDK(theta []float64, attr int, numRec, eps, del, alpha
 				for i := range chIn {
 
 					// linear term  -alpha * (2 + theta[attr]) / (4*numRec) * x_i[j]
-					yH := -1 * alpha * (2 + theta[attr]) / (4.0 * numRec)
+					yH := (-1 * alpha * (2 + theta[attr])) / (4.0 * numRec)
 					yLin[i*chunkCount+j/a.m][j%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling) * float64(a.scaling))))
 
 					//set quadratic terms
@@ -161,14 +158,14 @@ func (a Authority) generateDK(theta []float64, attr int, numRec, eps, del, alpha
 					for k := 0; k < attr; k++ {
 						//-alpha*Thetak/4numRec * x_i[k]x_i[j]
 						yH = (-1 * theta[k] * alpha) / (4 * numRec)
-						if k <= j {
-							yQuad[i*chunkCount+k/a.m][k%a.m][i*chunkCount+j/a.m][j%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
-							//c[i*cols+k+1][0][i*cols+j+1][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
-						} else {
-							yQuad[i*chunkCount+j/a.m][j%a.m][i*chunkCount+k/a.m][k%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
-							//c[i*cols+j+1][0][i*cols+k+1][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
+						//if k <= j {
+						yQuad[i*chunkCount+k/a.m][k%a.m][i*chunkCount+j/a.m][j%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
+						//c[i*cols+k+1][0][i*cols+j+1][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
+						//} else {
+						//	yQuad[i*chunkCount+j/a.m][j%a.m][i*chunkCount+k/a.m][k%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
+						//c[i*cols+j+1][0][i*cols+k+1][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
 
-						}
+						//}
 					}
 				}
 			}(chIn)
@@ -182,7 +179,9 @@ func (a Authority) generateDK(theta []float64, attr int, numRec, eps, del, alpha
 		wg.Wait()
 
 		quad = append(quad, yQuad)
+		//start3 := time.Now()
 		dk[j], err = a.generateFunctionKey(yQuad, yLin, yCon, big.NewInt(int64(nu[j])), label)
+		//debug(fmt.Sprintf("time to generate dk[%v] : %v \n", j, time.Since(start3)))
 		if err != nil {
 			log.Fatal("Error during Function Key Derivation:", err)
 		}
@@ -192,7 +191,7 @@ func (a Authority) generateDK(theta []float64, attr int, numRec, eps, del, alpha
 	yQuad := make([][]data.Matrix, a.n)
 	yLin := data.NewConstantMatrix(a.n, a.m, big.NewInt(0))
 	//theta[attr]-alpha/numRec - alpha*theta[attr]/3*numRec
-	yH := theta[attr] - alpha/numRec - (alpha*theta[attr])/(3*numRec)
+	yH := theta[attr] - alpha/2 - (alpha*theta[attr])/(4)
 	yCon := big.NewInt(int64(math.Round(yH * float64(a.scaling) * float64(a.scaling) * float64(a.scaling))))
 	//initialize yQuad
 	for i := 0; i < a.n; i++ {
