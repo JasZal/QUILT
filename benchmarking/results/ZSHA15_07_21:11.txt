@@ -1,0 +1,3 @@
+N, #numClient, #vecLen, #coeff!=0, Setup, Encryption, DeriveKey, DecryptionWOSearch Time in Nanoseconds
+1890 , 1890 , 1 , 1788886 , 0 , 0 , 0 , 0 ;
+1890 , 378 , 5 , 1796460 , 0 , 0 , 0 , 0 ;

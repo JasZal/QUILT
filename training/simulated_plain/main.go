@@ -44,7 +44,7 @@ func main() {
 	//alpha := 0.01
 	//eps := 9.0
 	prefix := "../datasets/training"
-	files := []string{"LBW", "UIS", "PCS"}
+	files := []string{"LBW", "PCS", "UIS"}
 	postfix := ".csv"
 	fileR := "results.txt"
 
