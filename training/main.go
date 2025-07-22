@@ -54,21 +54,20 @@ func UNUSED(x ...interface{}) {}
 // secLevel: 	secLevel of the underlying FE schemes
 // iterations: 	number of training iterations
 // epsilon: 		for DP (delta is set to 1/#rec) (does not have an affect on the runtime)
-// alpha: learning rate (does not have an affect on the runtime)
 // splits:		determines how many vertical splits are assumed in the data, if split == 0 , this means a maximal splitted dataset
 // rounds: how many rounds this should run
 func main() {
 	//file to save results
-	fileR := "results.txt"
+	fileR := "results.txt" //resutltsSyntetic
 
 	//attributes
 	rounds := 2
-	splitsV := []int{0, 1} //describes how many vertical splits are assumed, 0 means maximal split
+	splitsV := []int{0, 1} //0, 1,  2, 4describes how many vertical splits are assumed, 0 means maximal split
 
-	s := []int{1000, 10000} //100,10000
-	iterations := 25        //25
-	epsilon := 5.0          //5.0 //does not make a difference for runtime
-	secLevel := 1           //describes the secLevel of the scheme
+	s := []int{10000} //100,10000
+	iterations := 25  //25
+	epsilon := 5.0    //5.0 //does not make a difference for runtime
+	secLevel := 1     //describes the secLevel of the scheme
 
 	//iterate over different scaling types
 	for _, splits := range splitsV {
@@ -89,9 +88,9 @@ func main() {
 
 				//read data
 				//label is always assumed to be in the last slot
-				prefix := "./datasets/training"
-				files := []string{"LBW", "PCS", "UIS"}
-				alphas := []float64{0.1, 0.3, 0.1}
+				prefix := "./datasets/training"        //training"
+				files := []string{"LBW", "PCS", "UIS"} //"syntetic1000x9", "syntetic1000x10", "syntetic100x90", "syntetic100x90"} //} //"syntetic500x9", "syntetic500x10", "syntetic50x90", "syntetic50x90",
+				alphas := []float64{0.1, 0.3, 0.1}     // 0.3, 0.3, 0.3, 0.3
 
 				postfix := ".csv"
 

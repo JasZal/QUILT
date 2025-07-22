@@ -53,7 +53,7 @@ func (e Evaluator) training(iterations, numRec int, alpha float64, boundR *big.I
 	debug(fmt.Sprintln("************Training***************"))
 
 	for i := 0; i < iterations; i++ {
-		debug(fmt.Sprintf("iteration %v: ", i))
+		debug(fmt.Sprintf("iteration %v:", i))
 		eps := e.epsilon*math.Pow(float64(i+1)/float64(iterations), 1.5) - e.epsilon*math.Pow(float64(i)/float64(iterations), 1.5)
 		epsTotal += eps
 		del := e.delta / float64(iterations)

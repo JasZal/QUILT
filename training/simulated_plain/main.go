@@ -37,16 +37,16 @@ func UNUSED(t ...interface{}) {}
 func main() {
 	iterations := 25
 
-	noisy = true
+	noisy = false
 
-	rounds := 10
+	rounds := 1
 
 	//alpha := 0.01
 	//eps := 9.0
-	prefix := "../datasets/training"
-	files := []string{"LBW", "PCS", "UIS"}
+	prefix := "../datasets/"             //training"
+	files := []string{"syntetic100x100"} //"LBW", "PCS", "UIS"}
 	postfix := ".csv"
-	fileR := "results.txt"
+	fileR := "r.txt"
 
 	var epsilon []float64
 	for i := 0.00; i < 10.0; i += 0.2 {
@@ -56,12 +56,12 @@ func main() {
 			epsilon = append(epsilon, i)
 		}
 	}
-	//epsilon = []float64{5.0}
+	epsilon = []float64{5.0}
 
 	scalingStart := 10000
-	scalingEnd := 1000
+	scalingEnd := 10000
 	scalingStepSize := 9000
-	alpha := []float64{0.01, 0.03, 0.06, 0.09, 0.1, 0.3, 0.6, 0.9}
+	alpha := []float64{0.3} //0.01, 0.03, 0.06, 0.09, 0.1, 0.3, 0.6, 0.9}
 
 	if noisy {
 		write(fileR, fmt.Sprintf("epsilon: %v\n", epsilon))
@@ -94,7 +94,7 @@ func main() {
 						theta := gradientDescent(data, iterations, a, float64(scaling), e, del, theta0)
 
 						UNUSED(theta0, del, iterations)
-
+						fmt.Printf("theta: %v\n", theta)
 						//fmt.Println(compAcc(testdata, theta))
 						acc += compAcc(testdata, theta)
 

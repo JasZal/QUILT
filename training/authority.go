@@ -118,122 +118,136 @@ func (a Authority) generateDK(theta []float64, attr int, numRec, eps, del, alpha
 	//check privacy budget
 	nu := computeNoise(theta, alpha, float64(a.scaling), eps, del, float64(numRec))
 
-	var quad [][][]data.Matrix
+	quad := make([][][]data.Matrix, cols)
 	var err error
-	for j := 0; j < attr; j++ {
-		yQuad := make([][]data.Matrix, a.n)
-		yLin := data.NewConstantMatrix(a.n, a.m, big.NewInt(0))
+	var outerWg sync.WaitGroup
+	//parallelise over j
+	for j := 0; j < cols; j++ {
+		outerWg.Add(1)
 
-		//const. value: c[0000] = theta[j]
-		yCon := big.NewInt(int64(math.Round(theta[j] * math.Pow(float64(a.scaling), 3))))
+		go func(j int) {
+			//attribute weights
 
-		//initialize yQuad
-		for i := 0; i < a.n; i++ {
-			yQuad[i] = make([]data.Matrix, a.m)
-			for k := 0; k < a.m; k++ {
-				yQuad[i][k] = data.NewConstantMatrix(a.n, a.m, big.NewInt(0))
-			}
-		}
+			defer outerWg.Done()
 
-		wg := sync.WaitGroup{}
+			yQuad := make([][]data.Matrix, a.n)
+			yLin := data.NewConstantMatrix(a.n, a.m, big.NewInt(0))
 
-		chIn := make(chan int)
+			if j < attr {
+				//const. value: c[0000] = theta[j]
+				yCon := big.NewInt(int64(math.Round(theta[j] * math.Pow(float64(a.scaling), 3))))
 
-		for l := 0; l < runtime.NumCPU(); l++ {
-			wg.Add(1)
-			go func(chIn chan int) {
-				defer wg.Done()
-				for i := range chIn {
-
-					// linear term  -alpha * (2 + theta[attr]) / (4*numRec) * x_i[j]
-					yH := (-1 * alpha * (2 + theta[attr])) / (4.0 * numRec)
-					yLin[i*chunkCount+j/a.m][j%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling) * float64(a.scaling))))
-
-					//set quadratic terms
-					//alpha/numRec*x_i[attr]x_i[j]
-					yH = alpha / numRec
-					yQuad[i*chunkCount+attr/a.m][attr%a.m][i*chunkCount+j/a.m][j%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
-					//c[i*cols+j+1][0][(i+1)*cols][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
-
-					for k := 0; k < attr; k++ {
-						//-alpha*Thetak/4numRec * x_i[k]x_i[j]
-						yH = (-1 * theta[k] * alpha) / (4 * numRec)
-						//if k <= j {
-						yQuad[i*chunkCount+k/a.m][k%a.m][i*chunkCount+j/a.m][j%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
-						//c[i*cols+k+1][0][i*cols+j+1][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
-						//} else {
-						//	yQuad[i*chunkCount+j/a.m][j%a.m][i*chunkCount+k/a.m][k%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
-						//c[i*cols+j+1][0][i*cols+k+1][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
-
-						//}
+				//initialize yQuad
+				for i := 0; i < a.n; i++ {
+					yQuad[i] = make([]data.Matrix, a.m)
+					for k := 0; k < a.m; k++ {
+						yQuad[i][k] = data.NewConstantMatrix(a.n, a.m, big.NewInt(0))
 					}
 				}
-			}(chIn)
 
-		}
-		for l := 0; l < int(numRec); l++ {
-			chIn <- l
-		}
+				wg := sync.WaitGroup{}
 
-		close(chIn)
-		wg.Wait()
+				chIn := make(chan int)
+				//parallelise over n
+				for l := 0; l < runtime.NumCPU(); l++ {
+					wg.Add(1)
+					go func(chIn chan int) {
+						defer wg.Done()
+						for i := range chIn {
 
-		quad = append(quad, yQuad)
-		//start3 := time.Now()
-		dk[j], err = a.generateFunctionKey(yQuad, yLin, yCon, big.NewInt(int64(nu[j])), label)
-		//debug(fmt.Sprintf("time to generate dk[%v] : %v \n", j, time.Since(start3)))
-		if err != nil {
-			log.Fatal("Error during Function Key Derivation:", err)
-		}
-	}
+							// linear term  -alpha * (2 + theta[attr]) / (4*numRec) * x_i[j]
+							yH := (-1 * alpha * (2 + theta[attr])) / (4.0 * numRec)
+							yLin[i*chunkCount+j/a.m][j%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling) * float64(a.scaling))))
 
-	//bias term
-	yQuad := make([][]data.Matrix, a.n)
-	yLin := data.NewConstantMatrix(a.n, a.m, big.NewInt(0))
-	//theta[attr]-alpha/numRec - alpha*theta[attr]/3*numRec
-	yH := theta[attr] - alpha/2 - (alpha*theta[attr])/(4)
-	yCon := big.NewInt(int64(math.Round(yH * float64(a.scaling) * float64(a.scaling) * float64(a.scaling))))
-	//initialize yQuad
-	for i := 0; i < a.n; i++ {
-		yQuad[i] = make([]data.Matrix, a.m)
-		for k := 0; k < a.m; k++ {
-			yQuad[i][k] = data.NewConstantMatrix(a.n, a.m, big.NewInt(0))
-		}
-	}
+							//set quadratic terms
+							//alpha/numRec*x_i[attr]x_i[j]
+							yH = alpha / numRec
+							yQuad[i*chunkCount+attr/a.m][attr%a.m][i*chunkCount+j/a.m][j%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
+							//c[i*cols+j+1][0][(i+1)*cols][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
 
-	wg := sync.WaitGroup{}
+							for k := 0; k < attr; k++ {
+								//-alpha*Thetak/4numRec * x_i[k]x_i[j]
+								yH = (-1 * theta[k] * alpha) / (4 * numRec)
+								//if k <= j {
+								yQuad[i*chunkCount+k/a.m][k%a.m][i*chunkCount+j/a.m][j%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
+								//c[i*cols+k+1][0][i*cols+j+1][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
+								//} else {
+								//	yQuad[i*chunkCount+j/a.m][j%a.m][i*chunkCount+k/a.m][k%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
+								//c[i*cols+j+1][0][i*cols+k+1][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
 
-	chIn := make(chan int)
+								//}
+							}
+						}
+					}(chIn)
 
-	for i := 0; i < runtime.NumCPU(); i++ {
-		wg.Add(1)
-		go func(chIn chan int) {
-			defer wg.Done()
-			for i := range chIn {
-				// linear term  alpha *  / (numRec) * x_i[attr]
-				yH := alpha / numRec
-				yLin[i*chunkCount+attr/a.m][attr%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling) * float64(a.scaling))))
-
-				for k := 0; k < attr; k++ {
-					//-alpha*Thetak/4numRec * x_i[k]x_i[j]
-					yH = (-1 * theta[k] * alpha) / (4 * numRec)
-					yLin[i*chunkCount+k/a.m][k%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling) * float64(a.scaling))))
 				}
+				for l := 0; l < int(numRec); l++ {
+					chIn <- l
+				}
+
+				close(chIn)
+				wg.Wait()
+
+				quad[j] = yQuad // = append(quad, yQuad)
+				//	start3 := time.Now()
+				dk[j], err = a.generateFunctionKey(yQuad, yLin, yCon, big.NewInt(int64(nu[j])), label)
+				//	debug(fmt.Sprintf("time to generate dk[%v] (via scheme) : %v \n", j, time.Since(start3)))
+				if err != nil {
+					log.Fatal("Error during Function Key Derivation:", err)
+				}
+			} else {
+				//bias term
+
+				//theta[attr]-alpha/numRec - alpha*theta[attr]/3*numRec
+				yH := theta[attr] - alpha/2 - (alpha*theta[attr])/(4)
+				yCon := big.NewInt(int64(math.Round(yH * float64(a.scaling) * float64(a.scaling) * float64(a.scaling))))
+				//initialize yQuad
+				for i := 0; i < a.n; i++ {
+					yQuad[i] = make([]data.Matrix, a.m)
+					for k := 0; k < a.m; k++ {
+						yQuad[i][k] = data.NewConstantMatrix(a.n, a.m, big.NewInt(0))
+					}
+				}
+
+				wg := sync.WaitGroup{}
+
+				chIn := make(chan int)
+
+				for i := 0; i < runtime.NumCPU(); i++ {
+					wg.Add(1)
+					go func(chIn chan int) {
+						defer wg.Done()
+						for i := range chIn {
+							// linear term  alpha *  / (numRec) * x_i[attr]
+							yH := alpha / numRec
+							yLin[i*chunkCount+attr/a.m][attr%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling) * float64(a.scaling))))
+
+							for k := 0; k < attr; k++ {
+								//-alpha*Thetak/4numRec * x_i[k]x_i[j]
+								yH = (-1 * theta[k] * alpha) / (4 * numRec)
+								yLin[i*chunkCount+k/a.m][k%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling) * float64(a.scaling))))
+							}
+						}
+					}(chIn)
+				}
+				for i := 0; i < int(numRec); i++ {
+					chIn <- i
+				}
+
+				close(chIn)
+				wg.Wait()
+
+				quad[attr] = yQuad //quad = append(quad, yQuad)
+				dk[attr], err = a.generateFunctionKey(yQuad, yLin, yCon, big.NewInt(int64(nu[attr])), label)
+				if err != nil {
+					log.Fatal("Error during Function Key Derivation:", err)
+				}
+
 			}
-		}(chIn)
-	}
-	for i := 0; i < int(numRec); i++ {
-		chIn <- i
-	}
+		}(j)
 
-	close(chIn)
-	wg.Wait()
-
-	quad = append(quad, yQuad)
-	dk[attr], err = a.generateFunctionKey(yQuad, yLin, yCon, big.NewInt(int64(nu[attr])), label)
-	if err != nil {
-		log.Fatal("Error during Function Key Derivation:", err)
 	}
+	outerWg.Wait()
 
 	return dk, quad
 
