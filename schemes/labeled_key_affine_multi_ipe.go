@@ -180,7 +180,6 @@ func randomOB3(l int, mu *big.Int) (data.Matrix, data.Matrix, error) {
 func (f LKADOT) DeriveKey(y data.Matrix, secKey *LKADOTSecKey, c *big.Int, label []byte) (data.MatrixG2, error) {
 
 	//generate tags
-	//todo parallelize
 	tag := make([]*big.Int, f.Params.NumClients)
 	var err error
 	for i := 0; i < f.Params.NumClients; i++ {
@@ -199,7 +198,7 @@ func (f LKADOT) DeriveKey(y data.Matrix, secKey *LKADOTSecKey, c *big.Int, label
 	}
 
 	// compute sum
-	sumTags, err := rho.Dot(tag) // big.NewInt(0)
+	sumTags, err := rho.Dot(tag)
 	if err != nil {
 		return nil, err
 	}

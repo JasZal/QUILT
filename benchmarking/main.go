@@ -27,9 +27,11 @@ var logSearch bool
 func main() {
 
 	t := time.Now()
+
+	//number of rounds that the times are averaged over
 	rounds := 1.0
 
-	fileZSHA := "results/ZSHA" + t.Format("02_01_15:04") + ".txt"
+	fileZSHA := "results/ZSHA_" + t.Format("02_01_15:04") + ".txt"
 	fileQUILT := "results/QUILT_" + t.Format("02_01_15:04") + ".txt"
 
 	files := []string{fileZSHA, fileQUILT}
@@ -42,11 +44,11 @@ func main() {
 	boundN := big.NewInt(10)
 	sizes := [][]int{}
 
-	//choose if decryption is performed with or without the final search step
+	//choose if decryption is performed with (true) or without (false) the final search step
 	logSearch = false
 
 	//describes how many coefficients are != 0 in the polynomial
-	coeffManipulation = false //describes if random functions with arbitrary coefficients are chosen or if the number is manipulated
+	coeffManipulation = false //describes if random functions with arbitrary coefficients are chosen (false) or if the number is manipulated (true)
 	minCoeffN0 := 0           //min #coeff != 0
 	maxCoeffN0 := 200         //max #coeff != 0, only necessary if coeffMan. = true
 
@@ -180,7 +182,7 @@ func main() {
 				}
 
 				if sizes[i][1] == 1 {
-					//	timeSetup, timeEnc, timeDK, timeDec = runZSHA(secLevel, sizes[i][1], sizes[i][0]+1, sparseLevel, boundX, boundY, boundN, x, debug)
+					timeSetup, timeEnc, timeDK, timeDec = runZSHA(secLevel, sizes[i][1], sizes[i][0]+1, sparseLevel, boundX, boundY, boundN, x, debug)
 
 					count = 0
 					tS[0][count] += float64(timeSetup.Nanoseconds())
@@ -238,7 +240,6 @@ func runZSHA(secLevel, vecLen, numClient, sparseLevel int, boundX, boundY, bound
 		fmt.Println("time Setup: ", timeSetup)
 	}
 
-	// // Setup a channel for collecting results
 	cipher := make([]*noisy.SMNHCT, numClient)
 	var wg sync.WaitGroup
 	var timeEnc time.Duration
@@ -252,8 +253,8 @@ func runZSHA(secLevel, vecLen, numClient, sparseLevel int, boundX, boundY, bound
 
 		go func() {
 			defer wg.Done()
-			sem <- struct{}{}        // acquire slot
-			defer func() { <-sem }() // release slot
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
 			if i == 0 {
 				start = time.Now()
@@ -286,12 +287,12 @@ func runZSHA(secLevel, vecLen, numClient, sparseLevel int, boundX, boundY, bound
 	var counterMutex sync.Mutex
 
 	for i := 0; i < numClient; i++ {
-		i := i // capture loop variable
+		i := i
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			sem <- struct{}{}        // acquire slot
-			defer func() { <-sem }() // release slot
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
 			c[i] = make([]data.Matrix, vecLen)
 			for j := 0; j < vecLen; j++ {

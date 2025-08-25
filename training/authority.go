@@ -95,6 +95,7 @@ func computeNoise(theta []float64, alpha, scaling, eps, del, numClients float64)
 	return n
 }
 
+// creates decryption key for given function
 func (a *Authority) generateFunctionKey(yQuad [][]data.Matrix, yLin data.Matrix, yCon *big.Int, noise *big.Int, label []byte) (*schemes.OTNMCFEDecKey, error) {
 
 	// derive a functional key for vector y
@@ -106,6 +107,7 @@ func (a *Authority) generateFunctionKey(yQuad [][]data.Matrix, yLin data.Matrix,
 	return key, nil
 }
 
+// creates decryption keys and corresponding function for the gradient descent update function for given theta values
 func (a Authority) generateDK(theta []float64, attr int, numRec, eps, del, alpha float64, label []byte) ([]*schemes.OTNMCFEDecKey, [][][]data.Matrix) {
 	// generate inner product vectors and put them in a matrix
 
@@ -163,19 +165,13 @@ func (a Authority) generateDK(theta []float64, attr int, numRec, eps, del, alpha
 							//alpha/numRec*x_i[attr]x_i[j]
 							yH = alpha / numRec
 							yQuad[i*chunkCount+attr/a.m][attr%a.m][i*chunkCount+j/a.m][j%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
-							//c[i*cols+j+1][0][(i+1)*cols][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
 
 							for k := 0; k < attr; k++ {
 								//-alpha*Thetak/4numRec * x_i[k]x_i[j]
 								yH = (-1 * theta[k] * alpha) / (4 * numRec)
-								//if k <= j {
-								yQuad[i*chunkCount+k/a.m][k%a.m][i*chunkCount+j/a.m][j%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
-								//c[i*cols+k+1][0][i*cols+j+1][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
-								//} else {
-								//	yQuad[i*chunkCount+j/a.m][j%a.m][i*chunkCount+k/a.m][k%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
-								//c[i*cols+j+1][0][i*cols+k+1][0] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
 
-								//}
+								yQuad[i*chunkCount+k/a.m][k%a.m][i*chunkCount+j/a.m][j%a.m] = big.NewInt(int64(math.Round(yH * float64(a.scaling))))
+
 							}
 						}
 					}(chIn)
@@ -188,16 +184,14 @@ func (a Authority) generateDK(theta []float64, attr int, numRec, eps, del, alpha
 				close(chIn)
 				wg.Wait()
 
-				quad[j] = yQuad // = append(quad, yQuad)
-				//	start3 := time.Now()
+				quad[j] = yQuad
+
 				dk[j], err = a.generateFunctionKey(yQuad, yLin, yCon, big.NewInt(int64(nu[j])), label)
-				//	debug(fmt.Sprintf("time to generate dk[%v] (via scheme) : %v \n", j, time.Since(start3)))
 				if err != nil {
 					log.Fatal("Error during Function Key Derivation:", err)
 				}
 			} else {
 				//bias term
-
 				//theta[attr]-alpha/numRec - alpha*theta[attr]/3*numRec
 				yH := theta[attr] - alpha/2 - (alpha*theta[attr])/(4)
 				yCon := big.NewInt(int64(math.Round(yH * float64(a.scaling) * float64(a.scaling) * float64(a.scaling))))

@@ -42,6 +42,7 @@ func NewEvaluator(attr, n, scaling int, cts []*schemes.OTNMCFECT, a *Authority, 
 	return e
 }
 
+// trains the logistic regression by requesting decryption keys and evaluating them to update model weights
 func (e Evaluator) training(iterations, numRec int, alpha float64, boundR *big.Int) ([]float64, time.Duration, error) {
 
 	start := time.Now()
@@ -103,7 +104,6 @@ func (e *Evaluator) evaluate(dk []*schemes.OTNMCFEDecKey, yQuad [][][]data.Matri
 
 		if err != nil {
 			fmt.Println("error at i :", i)
-			//log.Fatal(err)
 			return
 		}
 

@@ -45,13 +45,10 @@ type OTNMCFEParams struct {
 	SecLevel   int //k
 	NumClients int //n
 	VecLen     int //m
-	// BoundX     *big.Int //X
-	// BoundY     *big.Int //C
-	// BoundNoise *big.Int //Delta
-	BoundT   *big.Int
-	Modulus  *big.Int //modulus p
-	paramsOT *noisy.OTPRFParams
-	paramsFH *LKADOTParams
+	BoundT     *big.Int
+	Modulus    *big.Int //modulus p
+	paramsOT   *noisy.OTPRFParams
+	paramsFH   *LKADOTParams
 }
 
 // This struct contains the shared choice for parameters on which the

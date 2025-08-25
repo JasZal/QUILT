@@ -41,7 +41,7 @@ func write(filename string, message string) {
 // prints given string if debugging is active
 func debug(s string) {
 	if deb {
-		fmt.Println(s)
+		fmt.Print(s)
 	}
 }
 
@@ -58,122 +58,118 @@ func UNUSED(x ...interface{}) {}
 // rounds: how many rounds this should run
 func main() {
 	//file to save results
-	fileR := "results.txt" //resutltsSyntetic
+	fileR := "resultsAverage.txt"
 
 	//attributes
-	rounds := 2
-	splitsV := []int{0, 1} //0, 1,  2, 4describes how many vertical splits are assumed, 0 means maximal split
+	rounds := 1
+	splits := 0 //describes how many vertical splits are assumed, 0 means maximal split
 
-	s := []int{10000} //100,10000
-	iterations := 25  //25
-	epsilon := 5.0    //5.0 //does not make a difference for runtime
+	s := []int{10000} //sets the scaling factor
+	iterations := 25  //number of iterations for gradient descent algorithm
+	epsilon := 5.0    //does not make a difference for runtime
 	secLevel := 1     //describes the secLevel of the scheme
 
-	//iterate over different scaling types
-	for _, splits := range splitsV {
-		if splits != 0 {
-			write(fileR, fmt.Sprintf("%v splits \n", splits))
-		} else {
-			write(fileR, "maximal splitted\n")
-		}
+	if splits != 0 {
+		write(fileR, fmt.Sprintf("%v splits \n", splits))
+	} else {
+		write(fileR, "maximal splitted\n")
+	}
 
-		for r := 0; r < rounds; r++ {
-			debug(fmt.Sprintf("split: %v, round: %v", splits, r))
-			for _, scaling := range s {
-				write(fileR, fmt.Sprintf("%v :\n", scaling))
+	debug(fmt.Sprintf("split: %v\n", splits))
+	for _, scaling := range s {
+		write(fileR, fmt.Sprintf("%v :\n", scaling))
 
-				boundTheta := 10.0 //10.0
-				boundT := big.NewInt(int64(boundTheta * math.Pow(float64(scaling), 3)))
-				label := make([]byte, 16)
+		boundTheta := 10.0 //10.0
+		boundT := big.NewInt(int64(boundTheta * math.Pow(float64(scaling), 3)))
+		label := make([]byte, 16)
 
-				//read data
-				//label is always assumed to be in the last slot
-				prefix := "./datasets/training"        //training"
-				files := []string{"LBW", "PCS", "UIS"} //"syntetic1000x9", "syntetic1000x10", "syntetic100x90", "syntetic100x90"} //} //"syntetic500x9", "syntetic500x10", "syntetic50x90", "syntetic50x90",
-				alphas := []float64{0.1, 0.3, 0.1}     // 0.3, 0.3, 0.3, 0.3
+		//read data
+		//label is always assumed to be in the last slot
+		prefix := "./datasets/training"
+		files := []string{"LBW", "PCS", "UIS"}
+		alphas := []float64{0.1, 0.3, 0.1} //learning rate that is used for gradient descent per dataset
 
-				postfix := ".csv"
+		postfix := ".csv"
 
-				for tI, training := range files {
+		for tI, training := range files {
 
-					dataPlain, m, attr := loadData(prefix+training+postfix, scaling, splits)
-					//fmt.Printf("dataPlain: %v\n", dataPlain)
-					n := len(dataPlain)
-					var numRec int
-					if splits != 0 {
-						numRec = int(float64(n) / float64((splits + 1)))
-					} else {
-						numRec = int(float64(n) / float64((attr + 1)))
-					}
-
-					alpha := alphas[tI]
-					delta := 1.0 / float64(numRec)
-
-					debug(fmt.Sprintf("Dataset: %v, #rec: %v, #attr: %v, #label: 1, scaling: %v\n", training, numRec, attr, scaling))
-
-					var err error
-
-					//setup scheme/authority
-					a, tSetupA := NewAuthority(secLevel, m, n, boundT, epsilon, delta, int64(scaling))
-					if err != nil {
-						log.Fatal("Error during Setup:  %v", err)
-					}
-					debug("time Setup: " + tSetupA.String())
-
-					//setup clients/encrypt data
-					ct := make([]*schemes.OTNMCFECT, n)
-					wg := sync.WaitGroup{}
-
-					chIn := make(chan int)
-					startE := time.Now()
-
-					for i := 0; i < runtime.NumCPU(); i++ {
-						wg.Add(1)
-						go func(chIn chan int) {
-							defer wg.Done()
-							for i := range chIn {
-								client := schemes.NewOTNMCFEFromParams(a.getParams())
-								start := time.Now()
-								ct[i], err = client.Encrypt(a.getEncryptionKey(i), dataPlain[i], label)
-								timeEnc := time.Since(start)
-								if i == 0 {
-									debug("time Enc one rec: " + timeEnc.String())
-								}
-							}
-						}(chIn)
-
-					}
-
-					for i := 0; i < n; i++ {
-						chIn <- i
-					}
-
-					close(chIn)
-					wg.Wait()
-
-					tE := time.Since(startE)
-					debug(fmt.Sprintf("time Encryption total: %v\n", tE))
-
-					//setup evaluator
-					e := NewEvaluator(attr, n, scaling, ct, a, epsilon, delta, label)
-					//start training
-
-					theta, timeLogReg, err := e.training(iterations, numRec, alpha, boundT)
-					if err != nil {
-						debug(fmt.Sprintf("Runtime: %v\n", timeLogReg))
-						log.Fatal("Error during Training:", err)
-					}
-
-					debug(fmt.Sprintf("***************************"))
-					debug(fmt.Sprintf("main: final theta: %v\n", theta))
-					debug(fmt.Sprintf("main: final time LogReg: %v\n", timeLogReg))
-					write(fileR, fmt.Sprintf("%v : %v\n", training, timeLogReg))
-
-				}
+			dataPlain, m, attr := loadData(prefix+training+postfix, scaling, splits)
+			n := len(dataPlain)
+			var numRec int
+			if splits != 0 {
+				numRec = int(float64(n) / float64((splits + 1)))
+			} else {
+				numRec = int(float64(n) / float64((attr + 1)))
 			}
 
+			alpha := alphas[tI]
+			delta := 1.0 / float64(numRec)
+
+			debug(fmt.Sprintf("Dataset: %v, #rec: %v, #attr: %v, #label: 1, scaling: %v\n", training, numRec, attr, scaling))
+			for r := 0; r < rounds; r++ {
+				debug(fmt.Sprintf("round: %v \n", r))
+				var err error
+
+				//setup scheme/authority
+				a, tSetupA := NewAuthority(secLevel, m, n, boundT, epsilon, delta, int64(scaling))
+				if err != nil {
+					log.Fatal("Error during Setup:  %v\n", err)
+				}
+				debug("time Setup: " + tSetupA.String())
+
+				//setup clients/encrypt data
+				ct := make([]*schemes.OTNMCFECT, n)
+				wg := sync.WaitGroup{}
+
+				chIn := make(chan int)
+				startE := time.Now()
+
+				for i := 0; i < runtime.NumCPU(); i++ {
+					wg.Add(1)
+					go func(chIn chan int) {
+						defer wg.Done()
+						for i := range chIn {
+							client := schemes.NewOTNMCFEFromParams(a.getParams())
+							start := time.Now()
+							ct[i], err = client.Encrypt(a.getEncryptionKey(i), dataPlain[i], label)
+							timeEnc := time.Since(start)
+							if i == 0 {
+								debug("time Enc one rec: " + timeEnc.String() + "\n")
+							}
+						}
+					}(chIn)
+
+				}
+
+				for i := 0; i < n; i++ {
+					chIn <- i
+				}
+
+				close(chIn)
+				wg.Wait()
+
+				tE := time.Since(startE)
+				debug(fmt.Sprintf("time Encryption total: %v\n", tE))
+
+				//setup evaluator
+				e := NewEvaluator(attr, n, scaling, ct, a, epsilon, delta, label)
+				//start training
+				theta, timeLogReg, err := e.training(iterations, numRec, alpha, boundT)
+				if err != nil {
+					debug(fmt.Sprintf("Runtime: %v\n", timeLogReg))
+					log.Fatal("Error during Training:", err)
+				}
+
+				debug(fmt.Sprintf("***************************"))
+				debug(fmt.Sprintf("main: final theta: %v\n", theta))
+				debug(fmt.Sprintf("main: final time LogReg: %v\n", timeLogReg))
+				write(fileR, fmt.Sprintf("%v : %v\n", training, timeLogReg))
+
+			}
 		}
+
 	}
+
 }
 
 //	takes the file and the scaling factor and returns a dataVector with all data points and the number of attributes (col-1)
