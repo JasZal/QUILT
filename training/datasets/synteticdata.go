@@ -11,8 +11,9 @@ import (
 )
 
 func main() {
-	attr := 100
-	rec := 50
+
+	attr := 9
+	rec := 500
 	theta := make([]float64, attr)
 	filename := fmt.Sprintf("syntetic%vx%v.csv", rec, attr)
 
