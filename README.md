@@ -1,41 +1,24 @@
-# Enjoying The High: One-Time Functional Encryption for Polynomials
-
-This artifact benchmarks an one-time multi-input functional encryption scheme for evaluating polynomials of arbitrary degree.
-
-## Overview
-
-Running the benchmark starts the `benchmark.sh` script, which first executes `main.go` to generate the benchmark data. 
-Once the benchmarks have finished, `plotHigher.py` is executed automatically to generate the figures from the collected data.
-
-The benchmark configuration can be adjusted directly in `main.go`. In particular, it allows configuring:
-- `rounds`: the number of benchmark iterations used for averaging,
-- `deg`: the polynomial degree to evaluate,
-- as well as other experiment parameters.
+# Artifact for Benchmarking QUILT - A New Construction for Quadratic One-Time Noisy Multi-Client Functional Encryption Schemes
+This artifact benchmarks QUILT.
 
 ## Requirements
+This repo requires a linux system, with golang version 1.24 or higher installed. 
 
-The artifact requires:
-- Linux
-- Go 1.24 or later
-- Python 3 with the `pandas` and `matplotlib` packages installed
+## Folder Structure
+- **schemes**  
+  Contains the code for **QUILT** and some building blocks.
 
-## Repository Structure
+- **benchmarking**  
+  Contains code for generic benchmarking and comparison to alternative schemes.
 
-- **schemes/**  
-  Implements the polynomial functional encryption scheme together with the cryptographic building blocks described in the paper.
+- **training**  
+  Contains code for logistic regression training.
 
-- **benchmarking/**  
-  Contains the generic benchmarking framework. Benchmarks are performed for all core algorithms: Setup, Encryption, Key Generation, and Decryption.
+  
+## Benchmarking
 
-- **utils/**  
-  Provides helper functions used throughout the implementation.
+main.go performs benchmarking for the scheme by Zalonis et al. (ZSHA) and QUILT.
+The schemes are evaluated for all algorithms: setup, encryption, keygen and decryption.
 
-## Running the Benchmarks
-
-To execute the complete benchmark pipeline, simply run:
-
-```bash
-./benchmark.sh
-```
-
-This script first executes `main.go` to generate the benchmark data and then runs `plotHigher.py` to automatically generate the corresponding plots.
+## Training
+This method trains a logistic regrestion and stores results in the specified file (*resultsAverage.txt* )
